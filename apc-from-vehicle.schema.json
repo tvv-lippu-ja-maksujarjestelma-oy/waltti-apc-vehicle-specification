@@ -38,11 +38,7 @@
             },
             "countquality": {
               "description": "Information on the quality of counting",
-              "enum": [
-                "regular",
-                "defect",
-                "other"
-              ]
+              "enum": ["regular", "defect", "other"]
             },
             "doorcounts": {
               "description": "JSON version of ITxPT PassengerDoorCount",
@@ -83,19 +79,13 @@
                           "minimum": 0
                         }
                       },
-                      "required": [
-                        "in",
-                        "out"
-                      ],
+                      "required": ["in", "out"],
                       "additionalProperties": false
                     },
                     "minItems": 1
                   }
                 },
-                "required": [
-                  "door",
-                  "count"
-                ],
+                "required": ["door", "count"],
                 "additionalProperties": true
               },
               "minItems": 1,
@@ -104,27 +94,19 @@
           },
           "anyOf": [
             {
-              "required": [
-                "vehicleload"
-              ]
+              "required": ["vehicleload"]
             },
             {
-              "required": [
-                "doorcounts"
-              ]
+              "required": ["doorcounts"]
             }
           ],
           "additionalProperties": true
         }
       },
-      "required": [
-        "tst"
-      ],
+      "required": ["tst"],
       "additionalProperties": true
     }
   },
-  "required": [
-    "APC"
-  ],
+  "required": ["APC"],
   "additionalProperties": false
 }
