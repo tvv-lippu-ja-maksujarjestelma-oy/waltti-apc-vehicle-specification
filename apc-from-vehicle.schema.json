@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://waltti.fi/schema/bundle/1-0-0/apc-from-vehicle.schema.json",
+  "$id": "https://waltti.fi/schema/bundle/1-1-0/apc-from-vehicle.schema.json",
   "title": "APC data from a vehicle",
   "description": "A single message of automatic passenger counting (APC) data sent from a vehicle to a centralized server. Inspired by the Helsinki Regional Transport Authority (HSL) APC interface and the ITxPT APC specification.",
   "type": "object",
@@ -9,6 +9,10 @@
       "description": "A wrapper object for the APC message",
       "type": "object",
       "properties": {
+        "schemaVersion": {
+          "description": "The SchemaVer version number of this JSON schema that this message follows. It must match a published SchemaVer version number from the '$id' key of this JSON schema. A valid value is for example '1-0-0' or '1-1-0'.",
+          "type": "string"
+        },
         "countingSystemId": {
           "description": "An ID for the onboard APC system in one vehicle. Used to differentiate between different sensor systems from different vendors in different vehicles. E.g. 'vendor1-client2-apc-device3' or possibly a UUIDv4 string. Needs to be universally unique.",
           "type": "string"
