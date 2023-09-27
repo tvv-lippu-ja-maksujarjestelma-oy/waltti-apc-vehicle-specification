@@ -1,21 +1,110 @@
-# waltti-apc-pilot-spec
+# Waltti-APC Vehicle Specification: Automatic Passenger Counting Data Collection
 
-This repository contains the technical specifications for the automatic passenger counting (APC) pilot by Waltti.
-The text is written for the pilot partners, i.e. the vendors who create the onboard counting devices.
+Waltti Solutions has an IT system called [Waltti-APC](https://github.com/tvv-lippu-ja-maksujarjestelma-oy/waltti-apc) for collecting automatic passenger counting (APC) data from public transit vehicles.
+The data is used for public transit planning and also published in a strongly anonymized manner for passenger information services.
 
-The devices are expected to count the amount of people and later other objects in the vehicles.
+This repository contains the technical specifications for data delivery from the vehicles to the Waltti-APC system.
+The text is aimed at a technical audience for implementing the systems running in the vehicles, especially the vendors who create and maintain the onboard counting devices.
 
-Each **counting system**, i.e. each set of devices of a pilot partner installed in each vehicle, is expected to send its results as soon as possible or at each stop.
+## Basic principles
 
-The delivery out of the vehicle must happen over MQTT.
+The APC devices are expected to count the people and possibly other objects entering and exiting the vehicles.
+
+Each **counting system**, i.e. the set of counting devices installed in one vehicle, is expected to send its results as soon as possible or at each stop.
+A counting system could correspond to a set of three cameras in a three-door bus or one security camera sensor in a vehicle.
+Usually only one counting system is installed per vehicle.
+
+Experience has shown that attention to detail in the installation of the physical devices improves the quality of the counting results.
+It is in the interest of public transport authorities and operators to make sure that the installations are done properly and professionally.
+
+If several messages are sent per stop, Waltti-APC backend will sum the results per stop.
+Therefore it is up to the counting system to decide whether to send each passenger individually or to accumulate the results until departing from the stop.
+
+To ease the life of the vendor, there are no requirements in the API regarding the public transit context.
+For example, there are no references to routes or stops in the API.
+
+This API has been designed to be compatible with the corresponding [HSL Helsinki Region Transport](https://www.hsl.fi/en) APC API to enable one API specification to serve all of Finland.
+If you notice any discrepancies, please contact Waltti.
+
+The delivery from the vehicle must happen over MQTT.
 Below are the MQTT and message specifications.
+
+```mermaid
+flowchart LR
+  vehicle("Vehicle")
+  mqttbroker("MQTT broker")
+  walttiapc("Waltti-APC")
+  vehicle --> mqttbroker
+  mqttbroker --> walttiapc
+```
 
 ## MQTT message contents
 
 Each message is in JSON.
 
-[apc-from-vehicle.schema.json](./apc-from-vehicle.schema.json) contains the preliminary [JSON Schema](https://json-schema.org/) that validates the data serialization for the pilot.
-All counting systems must conform to this schema.
+[apc-from-vehicle.schema.json](./apc-from-vehicle.schema.json) contains the [JSON Schema](https://json-schema.org/) that can validate the data sent to Waltti-APC.
+It is required that all counting systems adhere to this schema.
+
+The schema is inspired by an existing API from [HSL Helsinki Region Transport](https://www.hsl.fi/en) and by [ITxPT](https://itxpt.org/).
+Read the comments in the schema carefully.
+
+[example-message.json](./example-message.json) contains a JSON example of what could be sent to the MQTT broker:
+
+```json
+{
+  "APC": {
+    "schemaVersion": "1-2-0",
+    "countingSystemId": "3298a747-c434-4030-b6d7-ab803bd823d2",
+    "messageId": "06e64ba5-e555-4e2f-b8b4-b57bc69e8b99",
+    "tst": "2023-09-22T10:57:08.647Z",
+    "vehiclecounts": {
+      "countquality": "regular",
+      "doorcounts": [
+        {
+          "door": "1",
+          "count": [
+            {
+              "class": "adult",
+              "in": 3,
+              "out": 0
+            }
+          ]
+        },
+        {
+          "door": "2",
+          "count": [
+            {
+              "class": "adult",
+              "in": 0,
+              "out": 2
+            },
+            {
+              "class": "pram",
+              "in": 1,
+              "out": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+The values in the messages sent from the vehicle should not be cumulative.
+The accumulation is done in the Waltti-APC system.
+For example, imagine three adults embark through the first door and a message is sent with value `"in": 3`.
+Then two more adults embark on the same stop through the same door and another message is sent.
+The latter message should have value `"in": 2`, not `"in": 5`.
+
+Run
+
+```sh
+./validate-example-message.sh
+```
+
+to validate the preferred example.
+You can modify the script for your needs.
 
 Run
 
@@ -23,60 +112,59 @@ Run
 ./validate-schema.sh
 ```
 
-to validate the schema.
-
-[preferred-per-door-example.json](./preferred-per-door-example.json) contains a JSON example of what should be sent to the MQTT broker.
-All pilot partners are strongly encouraged to send data according to this example.
-
-Run
-
-```sh
-./validate-preferred-per-door-example.sh
-```
-
-to validate the preferred example.
-You can modify the script for your needs.
+to validate the schema itself.
 
 ## MQTT topic
 
 Each counting system has its own topic:
 
 ```
-apc-from-vehicle/<api-version>/fi/waltti/<partner-id>/<counting-system-id>
+apc-from-vehicle/<api-version>/fi/waltti/<vendor-id>/<counting-system-id>
 ```
 
 Replace `<api-version>` with `v1`.
 
-Replace `<partner-id>` with one of these:
+Replace `<vendor-id>` with your own ID, for example from the Waltti-APC pilot:
 
 - `deal-comp`
 - `emblica`
-- `oem-finland`
 - `telia`
 
 Replace `<counting-system-id>` with the `countingSystemId` described in [apc-from-vehicle.schema.json](./apc-from-vehicle.schema.json).
 
-## Environments
+## Environments and MQTT broker URLs
 
-We might move the MQTT brokers (servers) so do not hardcode the IP addresses.
+Each environment has its own MQTT broker to connect to and needs separate credentials.
+The credentials are per vendor and per environment.
+Make sure you have a way to rotate the credentials in case it is necessary.
 
-### Development
+Waltti-APC might change the MQTT brokers while retaining the hostname so do not hard code the IP addresses.
 
-The MQTT broker for the development environment is at `dev.mqtt.apc.lmj.fi`.
+### Staging
 
-You can use the development environment for your research and development of the counting system.
+Initially new vendors and possibly every new counting system will be given access only to the staging environment.
 
-Do not send personally sensitive data to the development environment.
+The MQTT broker for the staging environment is at `mqtt-staging.apc.waltti.fi`.
 
-We allow you both to publish and to subscribe onto your messages in the development environment.
+In this environment the data format and the counting system behaviour is checked.
 
-However, in the production environment you will only be able to publish messages.
+You can both publish and subscribe to your messages in the staging environment.
+
+### Production
+
+Once a counting system has been deemed to function as expected in the staging environment, it can be promoted to production.
+In the production environment the counting system results will end up into the hands of the public transit planners and anonymized for public consumption.
+
+The MQTT broker for the production environment is at `mqtt.apc.waltti.fi`.
+
+You can only publish and not subscribe to your messages in the production environment.
 
 ## MQTT parameters
 
 ### Protocol version
 
-Currently we are using the [MQTT protocol version 3.1.1 Plus Errata 01](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/errata01/os/mqtt-v3.1.1-errata01-os-complete.html).
+The protocol version used is the [MQTT protocol version 3.1.1 Plus Errata 01](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/errata01/os/mqtt-v3.1.1-errata01-os-complete.html).
+Any updates to the protocol version will be communicated clearly.
 
 ### Port
 
@@ -91,10 +179,10 @@ Authenticate with a username and a password.
 You will be allowed to act within the topic tree:
 
 ```
-apc-from-vehicle/v1/fi/waltti/<partner-id>/#
+apc-from-vehicle/v1/fi/waltti/<vendor-id>/#
 ```
 
-where `<partner-id>` is described in the section MQTT topic.
+where `<vendor-id>` is described in the section MQTT topic.
 
 ### Reconnecting
 
@@ -126,34 +214,34 @@ The Client Identifier (ClientId) names the MQTT session that persists over sever
 For example MQTT message acknowledgment is based on ClientId.
 
 Unfortunately the MQTT protocol version 3.1.1 has a protocol bug enabling a denial-of-service attack on connected clients:
-If any two clients, no matter their credentials, connect with the same ClientId, the broker must disconnect the first connection.
+**If any two clients, no matter their credentials, successfully connect with the same ClientId, the broker must disconnect the first connection.**
+MQTT protocol version 5.0 solves this bug but Waltti-APC does not support it, yet.
 
-The MQTT brokers used in the pilot might be used by consumer-facing services in the future.
-Therefore the ClientId must be protected.
+It is not planned but maybe at some point the MQTT brokers will be consolidated into one and used by consumer-facing services in the future.
+At that point no one wants to handle ClientId conflicts.
+Therefore the ClientId must be protected from the start.
 
 For each MQTT client/vehicle use a ClientId of the form:
 
 ```
-<partner-id>-<random-suffix>
+<vendor-id>-<random-suffix>
 ```
 
-where `<partner-id>` is described in the section MQTT topic and `<random-suffix>` is 10 characters from the range `[0-9A-Za-z]` randomly generated by you for each counting system.
+where `<vendor-id>` is described in the section MQTT topic and `<random-suffix>` is 10 characters from the range `[0-9A-Za-z]` randomly generated by you for each counting system.
 
 Normally there is no need to change `<random-suffix>`.
 Do not change `<random-suffix>` unless you are sure all messages from the counting system have been delivered and every message has been fully acknowledged.
 
 Treat `<random-suffix>` as a sensitive secret like a password.
 
-MQTT protocol version 5.0 solves this bug but we do not support it, yet.
-
 ### Last Will scheme
 
-**OPTIONAL**: Using Last Will is an easy and cheap investment into your connection debugging pleasures.
+Using Last Will is an easy and cheap investment into your connection debugging pleasures.
 
 Use a connection status topic:
 
 ```
-apc-from-vehicle/<api-version>/fi/waltti/<partner-id>/<counting-system-id>/connection-status
+apc-from-vehicle/<api-version>/fi/waltti/<vendor-id>/<counting-system-id>/connection-status
 ```
 
 The section on the MQTT topic explains the topic variables.
@@ -166,7 +254,7 @@ These are usually defined in the arguments for `connect()` or equivalent of the 
 
 When connecting or reconnecting, first send a UTF-8 message `connected at <connected-time>` to the connection status topic.
 `<connected-time>` should be created as early as possible when the MQTT (re)connection succeeds.
-It must contain an ISO 8601 timestamp with a fixed precision, for example millisecond precision, and with UTC time zone denoted with `Z`, e.g. `20220127T082928.123Z`.
+It must contain an ISO 8601 timestamp with a fixed precision, for example millisecond precision, and with UTC time zone denoted with `Z`, e.g. `2023-09-27T08:29:28.123Z`.
 
 This message should be sent as a retained message with QoS 2, too.
 
@@ -174,7 +262,7 @@ This is usually handled in the `connectionSucceededCallback()` or equivalent of 
 
 ### Buffering
 
-**OPTIONAL**: To avoid data loss due to power outages or connection problems, we recommend persisting messages on non-volatile storage until acknowledged by the MQTT broker.
+To avoid data loss due to power outages or connection problems, it is recommended to persist messages on non-volatile storage until acknowledged by the MQTT broker.
 
 You could for example retain all messages in a deque or ring buffer that can contain messages for a week.
 Another data structure may be used instead as long as the oldest messages are thrown away first if a size limit is reached.
