@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://waltti.fi/schema/bundle/1-1-0/apc-from-vehicle.schema.json",
+  "$id": "https://waltti.fi/schema/bundle/1-2-0/apc-from-vehicle.schema.json",
   "title": "APC data from a vehicle",
   "description": "A single message of automatic passenger counting (APC) data sent from a vehicle to a centralized server. Inspired by the Helsinki Regional Transport Authority (HSL) APC interface and the ITxPT APC specification.",
   "type": "object",
@@ -10,7 +10,7 @@
       "type": "object",
       "properties": {
         "schemaVersion": {
-          "description": "The SchemaVer version number of this JSON schema that this message follows. It must match a published SchemaVer version number from the '$id' key of this JSON schema. A valid value is for example '1-0-0' or '1-1-0'.",
+          "description": "The SchemaVer version number of this JSON schema that this message follows. It must match a published SchemaVer version number from the '$id' key of this JSON schema. A valid value is for example '1-2-0'.",
           "type": "string"
         },
         "countingSystemId": {
@@ -31,11 +31,6 @@
           "description": "A JSON version of combining ITxPT PassengerDoorCount with PassengerVehicleCount. The format originates from HSL.",
           "type": "object",
           "properties": {
-            "vehicleload": {
-              "description": "Number of passengers on-board. Matches ITxPT VehicleOccupancy.",
-              "type": "integer",
-              "minimum": 0
-            },
             "countquality": {
               "description": "Information on the quality of counting",
               "enum": ["regular", "defect", "other"]
@@ -47,9 +42,9 @@
                 "type": "object",
                 "properties": {
                   "door": {
-                    "description": "Identification of the door. The door closest to the front of the vehicle is 'door1'. The next door is 'door2' etc.",
+                    "description": "Identification of the door. For example, the door closest to the front of a bus is '1'. The next door is '2' etc. Trains might have a different naming structure.",
                     "type": "string",
-                    "pattern": "^door[0-9]+$"
+                    "minLength": 1
                   },
                   "count": {
                     "description": "JSON version of ITxPT PassengerCounting",
@@ -79,8 +74,8 @@
                           "minimum": 0
                         }
                       },
-                      "required": ["in", "out"],
-                      "additionalProperties": false
+                      "required": ["class", "in", "out"],
+                      "additionalProperties": true
                     },
                     "minItems": 1
                   }
@@ -92,18 +87,17 @@
               "uniqueItems": true
             }
           },
-          "anyOf": [
-            {
-              "required": ["vehicleload"]
-            },
-            {
-              "required": ["doorcounts"]
-            }
-          ],
+          "required": ["countquality", "doorcounts"],
           "additionalProperties": true
         }
       },
-      "required": ["tst"],
+      "required": [
+        "schemaVersion",
+        "countingSystemId",
+        "messageId",
+        "tst",
+        "vehiclecounts"
+      ],
       "additionalProperties": true
     }
   },

@@ -1,14 +1,14 @@
 {
   "APC": {
-    "schemaVersion": "1-1-0",
+    "schemaVersion": "1-2-0",
     "countingSystemId": "3298a747-c434-4030-b6d7-ab803bd823d2",
     "messageId": "06e64ba5-e555-4e2f-b8b4-b57bc69e8b99",
-    "tst": "2021-11-22T10:57:08.647Z",
+    "tst": "2023-09-22T10:57:08.647Z",
     "vehiclecounts": {
       "countquality": "regular",
       "doorcounts": [
         {
-          "door": "door1",
+          "door": "1",
           "count": [
             {
               "class": "adult",
@@ -18,7 +18,7 @@
           ]
         },
         {
-          "door": "door2",
+          "door": "2",
           "count": [
             {
               "class": "adult",
