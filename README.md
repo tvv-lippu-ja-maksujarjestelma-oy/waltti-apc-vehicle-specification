@@ -43,11 +43,12 @@ See [Buffering](#buffering) for messages that are delayed by a connection proble
 ### Counting system registration
 
 Waltti-APC accepts the data of a counting system only after the counting system is registered to a vehicle.
-The registration connects the `countingSystemId` to the operator and the vehicle number in the Waltti vehicle registry.
+The registration connects the `countingSystemId` to the operator and the vehicle number in the vehicle registry of the public transport authority.
+The authority or the operator maintains the vehicle registry. Waltti-APC only reads it.
 Waltti-APC drops the messages of an unregistered counting system, and the vendor gets no error message.
 
-Give Waltti the `countingSystemId` and the vehicle of each counting system before you start to send data.
-Tell Waltti before you move a counting system to another vehicle or replace it.
+Agree with the authority or the operator who registers the `countingSystemId` of each counting system, and get it registered before you start to send data.
+Do the same before you move a counting system to another vehicle or replace it.
 
 This API has been designed to be compatible with the corresponding [HSL Helsinki Region Transport](https://www.hsl.fi/en) APC API to enable one API specification to serve all of Finland.
 If you notice any discrepancies, please contact Waltti.
@@ -338,6 +339,6 @@ Therefore, after a reconnect:
 
 1. Contact Waltti. Waltti gives you a `<vendor-id>`.
 1. Waltti gives you separate credentials for the staging environment through a secure channel.
-1. Give Waltti the `countingSystemId` and the vehicle of each counting system, see [Counting system registration](#counting-system-registration).
+1. Make sure that each counting system is registered to its vehicle, see [Counting system registration](#counting-system-registration).
 1. Send data from a test vehicle to the staging environment. Waltti checks the data format, the matching to stops and the counts.
 1. When the data is correct, Waltti gives you the credentials for the production environment.
