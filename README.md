@@ -22,6 +22,32 @@ Therefore it is up to the counting system to decide whether to send each passeng
 
 To ease the life of the vendor, there are no requirements in the API regarding the public transit context.
 For example, there are no references to routes or stops in the API.
+The counting system does not need GNSS positioning or stop detection.
+Waltti-APC gets the stops from the GTFS Realtime vehicle position feed of the public transport authority.
+
+### Timing
+
+Waltti-APC matches each message to a stop by the time when the message arrives at Waltti-APC, not by `tst`.
+After the vehicle leaves a stop, Waltti-APC waits about 15 seconds and then closes the counts for that stop.
+A message that arrives later is added to a later stop.
+
+Therefore:
+
+- Send the counts for a stop as soon as possible, at the latest 5 seconds after the doors close.
+- If nobody boards or alights at a stop, you do not need to send a message.
+- Keep the clock of the counting system synchronized, for example with NTP or GNSS time, so that `tst` is correct.
+
+Waltti-APC does not yet match late messages to the correct stop by `tst`.
+See [Buffering](#buffering) for messages that are delayed by a connection problem.
+
+### Counting system registration
+
+Waltti-APC accepts the data of a counting system only after the counting system is registered to a vehicle.
+The registration connects the `countingSystemId` to the operator and the vehicle number in the Waltti vehicle registry.
+Waltti-APC drops the messages of an unregistered counting system, and the vendor gets no error message.
+
+Give Waltti the `countingSystemId` and the vehicle of each counting system before you start to send data.
+Tell Waltti before you move a counting system to another vehicle or replace it.
 
 This API has been designed to be compatible with the corresponding [HSL Helsinki Region Transport](https://www.hsl.fi/en) APC API to enable one API specification to serve all of Finland.
 If you notice any discrepancies, please contact Waltti.
@@ -53,7 +79,7 @@ Read the comments in the schema carefully.
 ```json
 {
   "APC": {
-    "schemaVersion": "1-2-0",
+    "schemaVersion": "1-3-0",
     "countingSystemId": "3298a747-c434-4030-b6d7-ab803bd823d2",
     "messageId": "06e64ba5-e555-4e2f-b8b4-b57bc69e8b99",
     "tst": "2023-09-22T10:57:08.647Z",
@@ -75,7 +101,7 @@ Read the comments in the schema carefully.
           "count": [
             {
               "class": "adult",
-              "in": 0,
+              "in": 1,
               "out": 2
             },
             {
@@ -97,6 +123,20 @@ For example, imagine three adults embark through the first door and a message is
 Then two more adults embark on the same stop through the same door and another message is sent.
 The latter message should have value `"in": 2`, not `"in": 5`.
 
+Other rules for the message contents:
+
+- Include each door at most once in one message, and each `class` at most once for one door.
+- Use the same door IDs in all messages of the counting system.
+- Count each person once, as `adult`, `child` or `other`.
+  Count a pram, a bike or a wheelchair in addition to the person who has it.
+  For example, a person who boards with a bike is `{"class": "adult", "in": 1, "out": 0}` and `{"class": "bike", "in": 1, "out": 0}` for the same door.
+- Do not add fields that the schema does not define. Waltti-APC drops the whole message if a count item has an unknown field.
+- Send only the counts and the IDs that the schema defines. Do not send images, video or personal data.
+
+`schemaVersion` is the version of the message schema. `v1` in the MQTT topic is the version of the API. Waltti will announce schema and API changes to vendors before they take effect.
+
+The `$id` URL of the schema is an identifier only. Use the schema file in this repository.
+
 Run
 
 ```sh
@@ -104,7 +144,8 @@ Run
 ```
 
 to validate the preferred example.
-You can modify the script for your needs.
+Give a file path as the first argument to validate your own message.
+The scripts need Node.js and npm, and you must run them in the root of this repository.
 
 Run
 
@@ -124,13 +165,11 @@ apc-from-vehicle/<api-version>/fi/waltti/<vendor-id>/<counting-system-id>
 
 Replace `<api-version>` with `v1`.
 
-Replace `<vendor-id>` with your own ID, for example from the Waltti-APC pilot:
-
-- `deal-comp`
-- `emblica`
-- `telia`
+Replace `<vendor-id>` with the vendor ID that Waltti gives you, for example `telia`.
 
 Replace `<counting-system-id>` with the `countingSystemId` described in [apc-from-vehicle.schema.json](./apc-from-vehicle.schema.json).
+The topic level and the `countingSystemId` in the payload must be the same.
+Do not use `.`, `/`, `+` or `#` in the IDs: the MQTT broker uses them as separators and wildcards.
 
 ## Environments and MQTT broker URLs
 
@@ -144,7 +183,7 @@ Waltti-APC might change the MQTT brokers while retaining the hostname so do not 
 
 Initially new vendors and possibly every new counting system will be given access only to the staging environment.
 
-The MQTT broker for the staging environment is at `mqtt-staging.apc.waltti.fi`.
+The MQTT broker for the staging environment is at `mqtts-staging.apc.waltti.fi`.
 
 In this environment the data format and the counting system behaviour is checked.
 
@@ -155,7 +194,7 @@ You can both publish and subscribe to your messages in the staging environment.
 Once a counting system has been deemed to function as expected in the staging environment, it can be promoted to production.
 In the production environment the counting system results will end up into the hands of the public transit planners and anonymized for public consumption.
 
-The MQTT broker for the production environment is at `mqtt.apc.waltti.fi`.
+The MQTT broker for the production environment is at `mqtts-prod.apc.waltti.fi`.
 
 You can only publish and not subscribe to your messages in the production environment.
 
@@ -164,7 +203,12 @@ You can only publish and not subscribe to your messages in the production enviro
 ### Protocol version
 
 The protocol version used is the [MQTT protocol version 3.1.1 Plus Errata 01](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/errata01/os/mqtt-v3.1.1-errata01-os-complete.html).
+Do not use MQTT 5.0: Waltti-APC has not tested it with counting systems.
 Any updates to the protocol version will be communicated clearly.
+
+Do not request QoS 2.
+The MQTT brokers support QoS 0 and QoS 1 only, and they answer a QoS 2 message as a QoS 1 message.
+Some MQTT client libraries do not handle this.
 
 ### Port
 
@@ -196,9 +240,19 @@ Use QoS 1.
 
 This is usually defined in the arguments for `publish()` or equivalent of the MQTT client library.
 
+With QoS 1, the broker can receive the same message more than once.
+When you resend a message, send the same payload to the same topic, byte for byte, with the same `messageId`.
+Waltti-APC then removes the duplicate.
+Use a new `messageId` only for new counts.
+
+The broker acknowledgment (`PUBACK`) means that the broker received the message.
+It does not mean that Waltti-APC accepted the message.
+Check the acceptance of your data with Waltti in the staging environment.
+
 ### Retained messages
 
-Do not use retained messages.
+Do not use retained messages for the counts.
+Use retained messages only for the connection status, see [Last Will scheme](#last-will-scheme).
 
 This is usually defined in the arguments for `publish()` or equivalent of the MQTT client library.
 
@@ -213,9 +267,8 @@ This is usually defined in the arguments for `connect()` or equivalent of the MQ
 The Client Identifier (ClientId) names the MQTT session that persists over several TCP connections when "clean session" is set to false.
 For example MQTT message acknowledgment is based on ClientId.
 
-Unfortunately the MQTT protocol version 3.1.1 has a protocol bug enabling a denial-of-service attack on connected clients:
+Unfortunately the MQTT protocol has a feature that enables a denial-of-service attack on connected clients:
 **If any two clients, no matter their credentials, successfully connect with the same ClientId, the broker must disconnect the first connection.**
-MQTT protocol version 5.0 solves this bug but Waltti-APC does not support it, yet.
 
 It is not planned but maybe at some point the MQTT brokers will be consolidated into one and used by consumer-facing services in the future.
 At that point no one wants to handle ClientId conflicts.
@@ -228,6 +281,9 @@ For each MQTT client/vehicle use a ClientId of the form:
 ```
 
 where `<vendor-id>` is described in the section MQTT topic and `<random-suffix>` is 10 characters from the range `[0-9A-Za-z]` randomly generated by you for each counting system.
+
+The Waltti-APC brokers accept a ClientId that is longer than the 23 bytes that MQTT 3.1.1 requires a broker to accept.
+If your MQTT client library limits the ClientId to 23 bytes, tell Waltti.
 
 Normally there is no need to change `<random-suffix>`.
 Do not change `<random-suffix>` unless you are sure all messages from the counting system have been delivered and every message has been fully acknowledged.
@@ -248,7 +304,7 @@ The section on the MQTT topic explains the topic variables.
 
 When connecting to the broker with the MQTT `CONNECT` message, specify a Last Will UTF-8 message payload `disconnected` into the connection status topic.
 
-Ask broker to send the Last Will as a retained message with QoS 2.
+Ask broker to send the Last Will as a retained message with QoS 1.
 
 These are usually defined in the arguments for `connect()` or equivalent of the MQTT client library.
 
@@ -256,7 +312,10 @@ When connecting or reconnecting, first send a UTF-8 message `connected at <conne
 `<connected-time>` should be created as early as possible when the MQTT (re)connection succeeds.
 It must contain an ISO 8601 timestamp with a fixed precision, for example millisecond precision, and with UTC time zone denoted with `Z`, e.g. `2023-09-27T08:29:28.123Z`.
 
-This message should be sent as a retained message with QoS 2, too.
+This message should be sent as a retained message with QoS 1, too.
+
+Before a planned disconnect, send a retained message `disconnected` to the connection status topic.
+The broker does not send the Last Will after a normal `DISCONNECT`.
 
 This is usually handled in the `connectionSucceededCallback()` or equivalent of the MQTT client library.
 
@@ -264,7 +323,21 @@ This is usually handled in the `connectionSucceededCallback()` or equivalent of 
 
 To avoid data loss due to power outages or connection problems, it is recommended to persist messages on non-volatile storage until acknowledged by the MQTT broker.
 
-You could for example retain all messages in a deque or ring buffer that can contain messages for a week.
-Another data structure may be used instead as long as the oldest messages are thrown away first if a size limit is reached.
-
 MQTT client libraries will not usually do this for you but will offer the necessary callbacks.
+
+Waltti-APC matches the messages to stops by arrival time, see [Timing](#timing).
+A buffered message is added to the stop where the vehicle is when the message arrives, which is usually a wrong stop.
+Therefore, after a reconnect:
+
+- Send the buffered messages whose `tst` is at most 15 seconds old.
+- Do not send older buffered messages automatically.
+  Keep them, for example in a deque or ring buffer that can contain messages for a week, and throw away the oldest messages first if a size limit is reached.
+  Contact Waltti if you need to deliver them.
+
+## Onboarding
+
+1. Contact Waltti. Waltti gives you a `<vendor-id>`.
+1. Waltti gives you separate credentials for the staging environment through a secure channel.
+1. Give Waltti the `countingSystemId` and the vehicle of each counting system, see [Counting system registration](#counting-system-registration).
+1. Send data from a test vehicle to the staging environment. Waltti checks the data format, the matching to stops and the counts.
+1. When the data is correct, Waltti gives you the credentials for the production environment.
