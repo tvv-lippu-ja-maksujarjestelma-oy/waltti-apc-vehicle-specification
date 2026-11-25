@@ -28,12 +28,15 @@ Waltti-APC gets the stops from the GTFS Realtime vehicle position feed of the pu
 ### Timing
 
 Waltti-APC matches each message to a stop by the time when the message arrives at Waltti-APC, not by `tst`.
-After the vehicle leaves a stop, Waltti-APC waits about 15 seconds and then closes the counts for that stop.
+Waltti-APC collects the messages of a vehicle until the GTFS Realtime feed shows that the vehicle has moved on to its next stop or to a new trip.
+Then Waltti-APC waits about 15 seconds and closes the collected counts for the stop.
 A message that arrives later is added to a later stop.
+If the vehicle passes two stops in less than 15 seconds, the counts of both stops can be closed together.
 
 Therefore:
 
 - Send the counts for a stop as soon as possible, at the latest 5 seconds after the doors close.
+  This target gives the best stop matching, but Waltti-APC cannot promise the correct stop for every message.
 - If nobody boards or alights at a stop, you do not need to send a message.
 - Keep the clock of the counting system synchronized, for example with NTP or GNSS time, so that `tst` is correct.
 
@@ -48,6 +51,7 @@ The authority or the operator maintains the vehicle registry. Waltti-APC only re
 Waltti-APC drops the messages of an unregistered counting system, and the vendor gets no error message.
 
 Agree with the authority or the operator who registers the `countingSystemId` of each counting system, and get it registered before you start to send data.
+The registered ID must be the full `countingSystemId`. Case does not matter.
 Do the same before you move a counting system to another vehicle or replace it.
 
 This API has been designed to be compatible with the corresponding [HSL Helsinki Region Transport](https://www.hsl.fi/en) APC API to enable one API specification to serve all of Finland.
@@ -147,6 +151,7 @@ Run
 to validate the preferred example.
 Give a file path as the first argument to validate your own message.
 The scripts need Node.js and npm, and you must run them in the root of this repository.
+The schema cannot check that each door and each class occurs only once. Check these rules in your own tests.
 
 Run
 
@@ -243,7 +248,7 @@ This is usually defined in the arguments for `publish()` or equivalent of the MQ
 
 With QoS 1, the broker can receive the same message more than once.
 When you resend a message, send the same payload to the same topic, byte for byte, with the same `messageId`.
-Waltti-APC then removes the duplicate.
+Waltti-APC then removes a duplicate that arrives within 1 hour of the first copy.
 Use a new `messageId` only for new counts.
 
 The broker acknowledgment (`PUBACK`) means that the broker received the message.
@@ -315,10 +320,13 @@ It must contain an ISO 8601 timestamp with a fixed precision, for example millis
 
 This message should be sent as a retained message with QoS 1, too.
 
+This is usually handled in the `connectionSucceededCallback()` or equivalent of the MQTT client library.
+
 Before a planned disconnect, send a retained message `disconnected` to the connection status topic.
 The broker does not send the Last Will after a normal `DISCONNECT`.
 
-This is usually handled in the `connectionSucceededCallback()` or equivalent of the MQTT client library.
+To read the stored status in the staging environment, subscribe to the exact connection status topic.
+A subscription with a wildcard, such as `#`, gets only the status messages that are sent after the subscription.
 
 ### Buffering
 
@@ -327,11 +335,19 @@ To avoid data loss due to power outages or connection problems, it is recommende
 MQTT client libraries will not usually do this for you but will offer the necessary callbacks.
 
 Waltti-APC matches the messages to stops by arrival time, see [Timing](#timing).
-A buffered message is added to the stop where the vehicle is when the message arrives, which is usually a wrong stop.
-Therefore, after a reconnect:
+A late message is added to the stop whose counts Waltti-APC closes next, which is usually a wrong stop.
 
-- Send the buffered messages whose `tst` is at most 15 seconds old.
-- Do not send older buffered messages automatically.
+There are two kinds of buffered messages:
+
+- Messages that the MQTT client has published but the broker has not acknowledged.
+  With clean session set to false, the MQTT client must send them again after a reconnect, whatever their age.
+  This is required by the MQTT protocol.
+- Messages that your application keeps because it could not give them to the MQTT client, for example during a connection problem or after a power outage.
+
+For the messages that your application keeps, after a reconnect:
+
+- Publish the messages whose `tst` is at most 15 seconds old.
+- Do not publish older messages automatically.
   Keep them, for example in a deque or ring buffer that can contain messages for a week, and throw away the oldest messages first if a size limit is reached.
   Contact Waltti if you need to deliver them.
 
